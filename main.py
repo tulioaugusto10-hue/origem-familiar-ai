@@ -1,133 +1,84 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import pandas as pd
-import shutil
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 import os
+import shutil
+import pandas as pd
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from image_processor import processar_imagem  # sua função de edição
 
-from backend.image_processor import envelhecer_foto
+# ------------------------
+# Configurações do app
+# ------------------------
+app = FastAPI()
 
-# =====================================================
-# PATHS
-# =====================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
 
-# =====================================================
-# APP
-# =====================================================
-app = FastAPI(title="API Origem Familiar")
+# Monta a pasta static
+static_dir = os.path.join(BASE_DIR, "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ------------------------
+# Conexão com PostgreSQL
+# ------------------------
+DB_HOST = "dpg-d5sr59vpm1nc73cj6cf0-a.oregon-postgres.render.com"
+DB_PORT = 5432
+DB_NAME = "origem_iprq"
+DB_USER = "origem_iprq_user"
+DB_PASS = "NG5yCul6MVyipMEGwSTOf7kUdWPihWgB"
 
-# =====================================================
-# CARREGAR BASES CSV
-# =====================================================
-sobrenomes_pais = pd.read_csv(os.path.join(DATA_DIR, "sobrenomes-por-pais.csv"))
-hist_sobrenomes = pd.read_csv(os.path.join(DATA_DIR, "historia-por-tras-de-cada-sobrenome.csv"))
-povos_paises = pd.read_csv(os.path.join(DATA_DIR, "povos_origem_paises.csv"))
-hist_povos = pd.read_csv(os.path.join(DATA_DIR, "historia-povos-de-cada-pais.csv"))
-datas_paises = pd.read_csv(os.path.join(DATA_DIR, "paises_datas_surgimento.csv"))
-hist_continentes = pd.read_csv(os.path.join(DATA_DIR, "historia-continentes.csv"))
-brasil = pd.read_csv(os.path.join(DATA_DIR, "por-pais-brasil.csv"))
-
-# =====================================================
-# MODELS
-# =====================================================
-class Consulta(BaseModel):
-    pais_suspeito: str | None = None
-    sobrenomes: str
-
-# =====================================================
-# HEALTH CHECK (OBRIGATÓRIO NO RENDER)
-# =====================================================
-@app.get("/")
-def health():
-    return {"status": "API Origem Familiar online"}
-
-# =====================================================
-# ENDPOINT HISTÓRICO
-# =====================================================
-@app.post("/buscar-origem")
-def buscar_origem(dados: Consulta):
-
-    sobrenomes = [s.strip().title() for s in dados.sobrenomes.split(",")]
-
-    encontrados = sobrenomes_pais[
-        sobrenomes_pais["sobrenome"].isin(sobrenomes)
-    ]
-
-    if encontrados.empty:
-        return {"mensagem": "Nenhum sobrenome encontrado na base histórica."}
-
-    paises_origem = encontrados["pais_origem"].unique().tolist()
-
-    povos = povos_paises[
-        povos_paises["pais"].isin(paises_origem)
-    ]["povo"].unique().tolist()
-
-    datas = datas_paises[
-        datas_paises["pais"].isin(paises_origem)
-    ].to_dict(orient="records")
-
-    continentes = hist_continentes[
-        hist_continentes["pais"].isin(paises_origem)
-    ].to_dict(orient="records")
-
-    historias_sobrenomes = hist_sobrenomes[
-        hist_sobrenomes["sobrenome"].isin(sobrenomes)
-    ].to_dict(orient="records")
-
-    presenca_brasil = brasil[
-        brasil["pais_origem"].isin(paises_origem)
-    ].to_dict(orient="records")
-
-    resumo = (
-        f"Com base nos registros históricos, há fortes indícios de que sua família "
-        f"possui origem em {', '.join(paises_origem)}. "
-        f"Os povos historicamente associados a essas regiões incluem: "
-        f"{', '.join(povos)}."
+def get_connection():
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS,
+        cursor_factory=RealDictCursor
     )
+    return conn
 
-    return {
-        "resumo": resumo,
-        "sobrenomes_consultados": sobrenomes,
-        "paises_origem": paises_origem,
-        "povos_originarios": povos,
-        "datas_surgimento_paises": datas,
-        "historia_continentes": continentes,
-        "historia_sobrenomes": historias_sobrenomes,
-        "presenca_no_brasil": presenca_brasil
-    }
+# ------------------------
+# Rota para o HTML
+# ------------------------
+@app.get("/")
+def home():
+    return FileResponse(os.path.join(static_dir, "index.html"))
 
-# =====================================================
-# ENDPOINT DE IMAGEM
-# =====================================================
+# ------------------------
+# Rota para buscar origem
+# ------------------------
+@app.post("/buscar-origem")
+async def buscar_origem(
+    pais_suspeito: str = Form(...),
+    sobrenomes: str = Form(...)
+):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Aqui você pode consultar seus CSVs ou banco PostgreSQL
+    # Exemplo: retornar resumo histórico básico
+    resumo = f"Suspeita: {pais_suspeito}\nSobrenomes analisados: {sobrenomes}\n\nHistória encontrada baseada nos dados históricos."
+
+    cur.close()
+    conn.close()
+
+    return {"resumo": resumo}
+
+# ------------------------
+# Rota para processar foto
+# ------------------------
 @app.post("/processar-foto")
 async def processar_foto(foto: UploadFile = File(...)):
-
-    upload_dir = os.path.join(BASE_DIR, "dados", "uploads")
-    output_dir = os.path.join(BASE_DIR, "dados", "processadas")
-
-    os.makedirs(upload_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
-
-    caminho_original = os.path.join(upload_dir, foto.filename)
-    caminho_final = os.path.join(output_dir, f"envelhecida_{foto.filename}")
-
-    with open(caminho_original, "wb") as buffer:
+    # Salvar temporariamente
+    caminho_temp = os.path.join(BASE_DIR, "temp_" + foto.filename)
+    with open(caminho_temp, "wb") as buffer:
         shutil.copyfileobj(foto.file, buffer)
 
-    envelhecer_foto(caminho_original, caminho_final)
+    # Processar usando sua função (ex: aplicar filtros, colocar bandeira)
+    resultado_path = processar_imagem(caminho_temp)
 
-    return {
-        "mensagem": "Foto processada com sucesso",
-        "arquivo_processado": caminho_final
-    }
+    return {"imagem_final": resultado_path}
 
 
