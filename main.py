@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 
 app = FastAPI()
 
-# 🔓 CORS (resolve OPTIONS / erro 404)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,15 +14,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 📂 Arquivos estáticos (HTML, CSS, JS)
+# Static files
 app.mount("/static", StaticFiles(directory="backend/static"), name="static")
 
-# 🏠 Página inicial
 @app.get("/")
 def home():
     return FileResponse("backend/static/index.html")
 
-# 🔎 API principal (POST)
 @app.post("/descendencia")
 async def descendencia(
     sobrenome: str = Form(...),
@@ -30,6 +28,7 @@ async def descendencia(
 ):
     return {
         "sobrenome": sobrenome,
-        "mensagem": f"O sobrenome {sobrenome} possui origem histórica registrada.",
+        "origem": "Origem histórica simulada",
         "foto_recebida": foto is not None
     }
+
