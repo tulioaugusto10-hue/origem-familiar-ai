@@ -2,11 +2,13 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import pandas as pd
-import shutil
 import os
+import shutil
 
-from image_processor import envelhecer_foto  # ou processador_de_imagens se for o nome do seu módulo
+# IMPORTE O SEU PROCESSADOR DE IMAGEM
+from image_processor import envelhecer_foto  # ou processador_de_imagens.py se estiver com outro nome
 
 # =====================================================
 # APP
@@ -32,61 +34,46 @@ def home():
     return FileResponse("static/index.html")
 
 # =====================================================
-# CARREGAR BASES CSV
-# =====================================================
-sobrenomes_pais = pd.read_csv("sobrenomes-por-pais.csv")
-hist_sobrenomes = pd.read_csv("historia-por-tras-de-cada-sobrenome.csv")
-povos_paises = pd.read_csv("povos_origem_paises.csv")
-hist_povos = pd.read_csv("historia-povos-de-cada-pais.csv")
-datas_paises = pd.read_csv("paises_datas_surgimento.csv")
-hist_continentes = pd.read_csv("historia-continentes.csv")
-brasil = pd.read_csv("por-pais-brasil.csv")
-
-# =====================================================
 # MODELS
 # =====================================================
-from pydantic import BaseModel
-
 class Consulta(BaseModel):
     pais_suspeito: str
     sobrenomes: str
 
 # =====================================================
-# ENDPOINT HISTÓRICO
+# CARREGAR BASES CSV
+# =====================================================
+sobrenomes_pais = pd.read_csv("sobrenomes-por-pais.csv")
+hist_sobrenomes = pd.read_csv("historia-por-tras-de-cada-sobrenome.csv")
+povos_paises = pd.read_csv("povos_origem_paises.csv")
+datas_paises = pd.read_csv("paises_datas_surgimento.csv")
+hist_continentes = pd.read_csv("historia-continentes.csv")
+brasil = pd.read_csv("por-pais-brasil.csv")
+
+# =====================================================
+# ENDPOINT BUSCAR ORIGEM
 # =====================================================
 @app.post("/buscar-origem")
 def buscar_origem(dados: Consulta):
 
     sobrenomes = [s.strip().title() for s in dados.sobrenomes.split(",")]
 
-    encontrados = sobrenomes_pais[
-        sobrenomes_pais["sobrenome"].isin(sobrenomes)
-    ]
+    encontrados = sobrenomes_pais[sobrenomes_pais["sobrenome"].isin(sobrenomes)]
 
     if encontrados.empty:
-        return {"mensagem": "Nenhum sobrenome encontrado na base histórica."}
+        return {"resumo": "Nenhum sobrenome encontrado na base histórica."}
 
     paises_origem = encontrados["pais_origem"].unique().tolist()
 
-    povos = povos_paises[
-        povos_paises["pais"].isin(paises_origem)
-    ]["povo"].unique().tolist()
+    povos = povos_paises[povos_paises["pais"].isin(paises_origem)]["povo"].unique().tolist()
 
-    datas = datas_paises[
-        datas_paises["pais"].isin(paises_origem)
-    ].to_dict(orient="records")
+    datas = datas_paises[datas_paises["pais"].isin(paises_origem)].to_dict(orient="records")
 
-    continentes = hist_continentes[
-        hist_continentes["pais"].isin(paises_origem)
-    ].to_dict(orient="records")
+    continentes = hist_continentes[hist_continentes["Continente"].isin(paises_origem)].to_dict(orient="records")
 
-    historias_sobrenomes = hist_sobrenomes[
-        hist_sobrenomes["sobrenome"].isin(sobrenomes)
-    ].to_dict(orient="records")
+    historias_sobrenomes = hist_sobrenomes[hist_sobrenomes["sobrenome"].isin(sobrenomes)].to_dict(orient="records")
 
-    presenca_brasil = brasil[
-        brasil["pais_origem"].isin(paises_origem)
-    ].to_dict(orient="records")
+    presenca_brasil = brasil[brasil["pais_origem"].isin(paises_origem)].to_dict(orient="records")
 
     resumo = (
         f"Com base nos registros históricos, há fortes indícios de que sua família "
@@ -107,7 +94,7 @@ def buscar_origem(dados: Consulta):
     }
 
 # =====================================================
-# ENDPOINT DE IMAGEM
+# ENDPOINT PROCESSAR FOTO
 # =====================================================
 @app.post("/processar-foto")
 async def processar_foto(foto: UploadFile = File(...)):
@@ -123,7 +110,4 @@ async def processar_foto(foto: UploadFile = File(...)):
 
     envelhecer_foto(caminho_original, caminho_final)
 
-    return {
-        "mensagem": "Foto processada com sucesso",
-        "arquivo_processado": caminho_final
-    }
+    return {"mensagem": "Foto processada com sucesso", "arquivo_processado": caminho_final}
