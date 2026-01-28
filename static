@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Descubra Sua Origem Familiar</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #000;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background: #111;
+      padding: 30px;
+      width: 100%;
+      max-width: 600px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    p {
+      text-align: center;
+      font-size: 14px;
+      color: #ccc;
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    textarea,
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    button {
+      margin-top: 25px;
+      width: 100%;
+      padding: 14px;
+      background: #f5c16c;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      color: #000;
+    }
+
+    button:hover {
+      background: #e0ad54;
+    }
+
+    .resultado {
+      margin-top: 25px;
+      padding: 15px;
+      background: #000;
+      border-radius: 8px;
+      font-size: 14px;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: #888;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Descubra Sua Origem</h1>
+    <p>Compartilhe informações que ajudarão nosso algoritmo a reconstruir sua história familiar.</p>
+
+    <form id="form-origem">
+      <label for="historia">
+        Suspeitas de descendência familiar
+        <small>(Digite apenas o nome do país)</small>
+      </label>
+      <textarea id="historia" required placeholder="Ex: Itália"></textarea>
+
+      <label for="nomes">
+        Sobrenomes mais comuns na família
+      </label>
+      <input type="text" id="nomes" required placeholder="Ex: Silva, Santos, Rossi">
+
+      <label for="foto">Envie uma foto sua (opcional)</label>
+      <input type="file" id="foto" accept="image/*">
+
+      <button type="submit">Analisar Origem</button>
+    </form>
+
+    <div id="resultado" class="resultado"></div>
+
+    <div class="footer">
+      Reconstrução de História Familiar<br>
+      Tecnologia MEUDNA • Análise baseada em dados históricos
+    </div>
+  </div>
+
+<script>
+const API_BASE = "https://origem-familiar-ai.onrender.com";
+
+document.getElementById("form-origem").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const pais = document.getElementById("historia").value;
+  const sobrenomes = document.getElementById("nomes").value;
+  const foto = document.getElementById("foto").files[0];
+
+  const resultadoDiv = document.getElementById("resultado");
+  resultadoDiv.style.display = "block";
+  resultadoDiv.innerText = "🔍 Analisando dados históricos...\n";
+
+  // ===============================
+  // BUSCAR ORIGEM HISTÓRICA
+  // ===============================
+  const resposta = await fetch(`${API_BASE}/buscar-origem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pais_suspeito: pais,
+      sobrenomes: sobrenomes
+    })
+  });
+
+  const dados = await resposta.json();
+
+  let texto = "🧬 RESULTADO DA ANÁLISE\n\n";
+  texto += dados.resumo || "Nenhum dado encontrado.";
+  texto += "\n\n";
+
+  // ===============================
+  // PROCESSAR FOTO (SE ENVIADA)
+  // ===============================
+  if (foto) {
+    texto += "📸 Processando imagem...\n";
+
+    const formData = new FormData();
+    formData.append("foto", foto);
+
+    const respFoto = await fetch(`${API_BASE}/processar-foto`, {
+      method: "POST",
+      body: formData
+    });
+
+    const dadosFoto = await respFoto.json();
+    texto += `Imagem analisada com sucesso.\n`;
+  }
+
+  resultadoDiv.innerText = texto;
+});
+</script>
+
+</body>
+</html>
