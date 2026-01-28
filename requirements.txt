@@ -1,7 +1,34 @@
+# FastAPI e Starlette
 fastapi==0.128.0
+starlette==0.50.0
+
+# Uvicorn para rodar o servidor
 uvicorn==0.40.0
+
+# Pillow para processar imagens (versão pré-compilada)
+Pillow==10.1.0
+
+# Bibliotecas de dados
+pandas==3.0.0
+numpy==2.4.1
+
+# PostgreSQL
 psycopg2-binary==2.9.11
 sqlalchemy==2.0.46
+
+# Upload de arquivos
 python-multipart==0.0.22
-pandas==3.0.0
-Pillow==10.1.0
+
+# Tipagem e utilitários FastAPI
+typing-extensions==4.15.0
+annotated-doc==0.0.4
+annotated-types==0.7.0
+pydantic==2.12.5
+pydantic-core==2.41.5
+typing-inspection==0.4.2
+anyio==4.12.1
+click==8.3.1
+h11==0.16.0
+greenlet==3.3.1
+python-dateutil==2.9.0.post0
+idna==3.11
