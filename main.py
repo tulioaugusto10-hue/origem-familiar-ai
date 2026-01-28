@@ -1,21 +1,23 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import pandas as pd
-import os
 import shutil
+import os
 
-# IMPORTE O SEU PROCESSADOR DE IMAGEM
-from image_processor import envelhecer_foto  # ou processador_de_imagens.py se estiver com outro nome
+from backend.image_processor import envelhecer_foto
+
+# =====================================================
+# PATHS
+# =====================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # =====================================================
 # APP
 # =====================================================
 app = FastAPI(title="API Origem Familiar")
 
-# 🔓 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,57 +25,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 📂 Servir arquivos estáticos
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 # =====================================================
-# PÁGINA INICIAL
+# CARREGAR BASES CSV
 # =====================================================
-@app.get("/")
-def home():
-    return FileResponse("static/index.html")
+sobrenomes_pais = pd.read_csv(os.path.join(DATA_DIR, "sobrenomes-por-pais.csv"))
+hist_sobrenomes = pd.read_csv(os.path.join(DATA_DIR, "historia-por-tras-de-cada-sobrenome.csv"))
+povos_paises = pd.read_csv(os.path.join(DATA_DIR, "povos_origem_paises.csv"))
+hist_povos = pd.read_csv(os.path.join(DATA_DIR, "historia-povos-de-cada-pais.csv"))
+datas_paises = pd.read_csv(os.path.join(DATA_DIR, "paises_datas_surgimento.csv"))
+hist_continentes = pd.read_csv(os.path.join(DATA_DIR, "historia-continentes.csv"))
+brasil = pd.read_csv(os.path.join(DATA_DIR, "por-pais-brasil.csv"))
 
 # =====================================================
 # MODELS
 # =====================================================
 class Consulta(BaseModel):
-    pais_suspeito: str
+    pais_suspeito: str | None = None
     sobrenomes: str
 
 # =====================================================
-# CARREGAR BASES CSV
+# HEALTH CHECK (OBRIGATÓRIO NO RENDER)
 # =====================================================
-sobrenomes_pais = pd.read_csv("sobrenomes-por-pais.csv")
-hist_sobrenomes = pd.read_csv("historia-por-tras-de-cada-sobrenome.csv")
-povos_paises = pd.read_csv("povos_origem_paises.csv")
-datas_paises = pd.read_csv("paises_datas_surgimento.csv")
-hist_continentes = pd.read_csv("historia-continentes.csv")
-brasil = pd.read_csv("por-pais-brasil.csv")
+@app.get("/")
+def health():
+    return {"status": "API Origem Familiar online"}
 
 # =====================================================
-# ENDPOINT BUSCAR ORIGEM
+# ENDPOINT HISTÓRICO
 # =====================================================
 @app.post("/buscar-origem")
 def buscar_origem(dados: Consulta):
 
     sobrenomes = [s.strip().title() for s in dados.sobrenomes.split(",")]
 
-    encontrados = sobrenomes_pais[sobrenomes_pais["sobrenome"].isin(sobrenomes)]
+    encontrados = sobrenomes_pais[
+        sobrenomes_pais["sobrenome"].isin(sobrenomes)
+    ]
 
     if encontrados.empty:
-        return {"resumo": "Nenhum sobrenome encontrado na base histórica."}
+        return {"mensagem": "Nenhum sobrenome encontrado na base histórica."}
 
     paises_origem = encontrados["pais_origem"].unique().tolist()
 
-    povos = povos_paises[povos_paises["pais"].isin(paises_origem)]["povo"].unique().tolist()
+    povos = povos_paises[
+        povos_paises["pais"].isin(paises_origem)
+    ]["povo"].unique().tolist()
 
-    datas = datas_paises[datas_paises["pais"].isin(paises_origem)].to_dict(orient="records")
+    datas = datas_paises[
+        datas_paises["pais"].isin(paises_origem)
+    ].to_dict(orient="records")
 
-    continentes = hist_continentes[hist_continentes["Continente"].isin(paises_origem)].to_dict(orient="records")
+    continentes = hist_continentes[
+        hist_continentes["pais"].isin(paises_origem)
+    ].to_dict(orient="records")
 
-    historias_sobrenomes = hist_sobrenomes[hist_sobrenomes["sobrenome"].isin(sobrenomes)].to_dict(orient="records")
+    historias_sobrenomes = hist_sobrenomes[
+        hist_sobrenomes["sobrenome"].isin(sobrenomes)
+    ].to_dict(orient="records")
 
-    presenca_brasil = brasil[brasil["pais_origem"].isin(paises_origem)].to_dict(orient="records")
+    presenca_brasil = brasil[
+        brasil["pais_origem"].isin(paises_origem)
+    ].to_dict(orient="records")
 
     resumo = (
         f"Com base nos registros históricos, há fortes indícios de que sua família "
@@ -94,20 +106,27 @@ def buscar_origem(dados: Consulta):
     }
 
 # =====================================================
-# ENDPOINT PROCESSAR FOTO
+# ENDPOINT DE IMAGEM
 # =====================================================
 @app.post("/processar-foto")
 async def processar_foto(foto: UploadFile = File(...)):
 
-    os.makedirs("dados/uploads", exist_ok=True)
-    os.makedirs("dados/processadas", exist_ok=True)
+    upload_dir = os.path.join(BASE_DIR, "dados", "uploads")
+    output_dir = os.path.join(BASE_DIR, "dados", "processadas")
 
-    caminho_original = f"dados/uploads/{foto.filename}"
-    caminho_final = f"dados/processadas/envelhecida_{foto.filename}"
+    os.makedirs(upload_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    caminho_original = os.path.join(upload_dir, foto.filename)
+    caminho_final = os.path.join(output_dir, f"envelhecida_{foto.filename}")
 
     with open(caminho_original, "wb") as buffer:
         shutil.copyfileobj(foto.file, buffer)
 
     envelhecer_foto(caminho_original, caminho_final)
 
-    return {"mensagem": "Foto processada com sucesso", "arquivo_processado": caminho_final}
+    return {
+        "mensagem": "Foto processada com sucesso",
+        "arquivo_processado": caminho_final
+    }
+
