@@ -5,7 +5,13 @@ import pandas as pd
 import shutil
 import os
 
-from image_processor import envelhecer_foto
+from backend.image_processor import envelhecer_foto
+
+# =====================================================
+# PATHS
+# =====================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # =====================================================
 # APP
@@ -22,20 +28,27 @@ app.add_middleware(
 # =====================================================
 # CARREGAR BASES CSV
 # =====================================================
-sobrenomes_pais = pd.read_csv("sobrenomes-por-pais.csv")
-hist_sobrenomes = pd.read_csv("historia-por-tras-de-cada-sobrenome.csv")
-povos_paises = pd.read_csv("povos_origem_paises.csv")
-hist_povos = pd.read_csv("historia-povos-de-cada-pais.csv")
-datas_paises = pd.read_csv("paises_datas_surgimento.csv")
-hist_continentes = pd.read_csv("historia-continentes.csv")
-brasil = pd.read_csv("por-pais-brasil.csv")
+sobrenomes_pais = pd.read_csv(os.path.join(DATA_DIR, "sobrenomes-por-pais.csv"))
+hist_sobrenomes = pd.read_csv(os.path.join(DATA_DIR, "historia-por-tras-de-cada-sobrenome.csv"))
+povos_paises = pd.read_csv(os.path.join(DATA_DIR, "povos_origem_paises.csv"))
+hist_povos = pd.read_csv(os.path.join(DATA_DIR, "historia-povos-de-cada-pais.csv"))
+datas_paises = pd.read_csv(os.path.join(DATA_DIR, "paises_datas_surgimento.csv"))
+hist_continentes = pd.read_csv(os.path.join(DATA_DIR, "historia-continentes.csv"))
+brasil = pd.read_csv(os.path.join(DATA_DIR, "por-pais-brasil.csv"))
 
 # =====================================================
 # MODELS
 # =====================================================
 class Consulta(BaseModel):
-    pais_suspeito: str
+    pais_suspeito: str | None = None
     sobrenomes: str
+
+# =====================================================
+# HEALTH CHECK (OBRIGATÓRIO NO RENDER)
+# =====================================================
+@app.get("/")
+def health():
+    return {"status": "API Origem Familiar online"}
 
 # =====================================================
 # ENDPOINT HISTÓRICO
@@ -98,11 +111,14 @@ def buscar_origem(dados: Consulta):
 @app.post("/processar-foto")
 async def processar_foto(foto: UploadFile = File(...)):
 
-    os.makedirs("dados/uploads", exist_ok=True)
-    os.makedirs("dados/processadas", exist_ok=True)
+    upload_dir = os.path.join(BASE_DIR, "dados", "uploads")
+    output_dir = os.path.join(BASE_DIR, "dados", "processadas")
 
-    caminho_original = f"dados/uploads/{foto.filename}"
-    caminho_final = f"dados/processadas/envelhecida_{foto.filename}"
+    os.makedirs(upload_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    caminho_original = os.path.join(upload_dir, foto.filename)
+    caminho_final = os.path.join(output_dir, f"envelhecida_{foto.filename}")
 
     with open(caminho_original, "wb") as buffer:
         shutil.copyfileobj(foto.file, buffer)
