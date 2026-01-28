@@ -1,25 +1,115 @@
-from PIL import Image, ImageEnhance, ImageFilter
-import numpy as np
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import pandas as pd
+import shutil
+import os
 
-# Abrir a foto do usuário
-foto = Image.open("dados/foto_usuario.jpg").convert("RGB")
+from image_processor import envelhecer_foto
 
-# 1. Transformar em preto e branco
-foto_pb = foto.convert("L")
+# =====================================================
+# APP
+# =====================================================
+app = FastAPI(title="API Origem Familiar")
 
-# 2. Adicionar “traços” ou textura envelhecida (efeito amassado)
-# Criar ruído simples
-largura, altura = foto_pb.size
-ruido = np.random.randint(0, 50, (altura, largura), dtype='uint8')
-imagem_ruido = Image.fromarray(ruido, 'L')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Misturar ruído com a foto
-foto_textura = Image.blend(foto_pb, imagem_ruido, alpha=0.2)
+# =====================================================
+# CARREGAR BASES CSV
+# =====================================================
+sobrenomes_pais = pd.read_csv("sobrenomes-por-pais.csv")
+hist_sobrenomes = pd.read_csv("historia-por-tras-de-cada-sobrenome.csv")
+povos_paises = pd.read_csv("povos_origem_paises.csv")
+hist_povos = pd.read_csv("historia-povos-de-cada-pais.csv")
+datas_paises = pd.read_csv("paises_datas_surgimento.csv")
+hist_continentes = pd.read_csv("historia-continentes.csv")
+brasil = pd.read_csv("por-pais-brasil.csv")
 
-# 3. Suavizar levemente e dar efeito antigo
-foto_final = foto_textura.filter(ImageFilter.GaussianBlur(radius=1))
-foto_final = ImageEnhance.Contrast(foto_final).enhance(1.2)
+# =====================================================
+# MODELS
+# =====================================================
+class Consulta(BaseModel):
+    pais_suspeito: str
+    sobrenomes: str
 
-# Salvar a imagem processada
-foto_final.save("dados/foto_envelhecida.jpg")
-print("Imagem processada e salva em dados/foto_envelhecida.jpg")
+# =====================================================
+# ENDPOINT HISTÓRICO
+# =====================================================
+@app.post("/buscar-origem")
+def buscar_origem(dados: Consulta):
+
+    sobrenomes = [s.strip().title() for s in dados.sobrenomes.split(",")]
+
+    encontrados = sobrenomes_pais[
+        sobrenomes_pais["sobrenome"].isin(sobrenomes)
+    ]
+
+    if encontrados.empty:
+        return {"mensagem": "Nenhum sobrenome encontrado na base histórica."}
+
+    paises_origem = encontrados["pais_origem"].unique().tolist()
+
+    povos = povos_paises[
+        povos_paises["pais"].isin(paises_origem)
+    ]["povo"].unique().tolist()
+
+    datas = datas_paises[
+        datas_paises["pais"].isin(paises_origem)
+    ].to_dict(orient="records")
+
+    continentes = hist_continentes[
+        hist_continentes["pais"].isin(paises_origem)
+    ].to_dict(orient="records")
+
+    historias_sobrenomes = hist_sobrenomes[
+        hist_sobrenomes["sobrenome"].isin(sobrenomes)
+    ].to_dict(orient="records")
+
+    presenca_brasil = brasil[
+        brasil["pais_origem"].isin(paises_origem)
+    ].to_dict(orient="records")
+
+    resumo = (
+        f"Com base nos registros históricos, há fortes indícios de que sua família "
+        f"possui origem em {', '.join(paises_origem)}. "
+        f"Os povos historicamente associados a essas regiões incluem: "
+        f"{', '.join(povos)}."
+    )
+
+    return {
+        "resumo": resumo,
+        "sobrenomes_consultados": sobrenomes,
+        "paises_origem": paises_origem,
+        "povos_originarios": povos,
+        "datas_surgimento_paises": datas,
+        "historia_continentes": continentes,
+        "historia_sobrenomes": historias_sobrenomes,
+        "presenca_no_brasil": presenca_brasil
+    }
+
+# =====================================================
+# ENDPOINT DE IMAGEM
+# =====================================================
+@app.post("/processar-foto")
+async def processar_foto(foto: UploadFile = File(...)):
+
+    os.makedirs("dados/uploads", exist_ok=True)
+    os.makedirs("dados/processadas", exist_ok=True)
+
+    caminho_original = f"dados/uploads/{foto.filename}"
+    caminho_final = f"dados/processadas/envelhecida_{foto.filename}"
+
+    with open(caminho_original, "wb") as buffer:
+        shutil.copyfileobj(foto.file, buffer)
+
+    envelhecer_foto(caminho_original, caminho_final)
+
+    return {
+        "mensagem": "Foto processada com sucesso",
+        "arquivo_processado": caminho_final
+    }
